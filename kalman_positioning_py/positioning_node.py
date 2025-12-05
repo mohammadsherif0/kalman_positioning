@@ -100,8 +100,13 @@ class PositioningNode(Node):
         dy = y - self.last_y
         dtheta = self.normalize_angle(theta - self.last_theta)
         
+        self.get_logger().info(f'ODOM: pos=({x:.2f},{y:.2f},{theta:.2f}) delta=({dx:.3f},{dy:.3f},{dtheta:.3f})')
+        
         # UKF Predict
         self.ukf.predict(dt, dx, dy, dtheta)
+        
+        state_after = self.ukf.get_state()
+        self.get_logger().info(f'After PREDICT: ({state_after[0]:.2f}, {state_after[1]:.2f}, {state_after[2]:.2f})')
         
         # Update for next callback
         self.last_x = x
@@ -127,7 +132,11 @@ class PositioningNode(Node):
         
         # UKF Update
         if observations:
+            self.get_logger().info(f'UPDATE with {len(observations)} landmarks')
+            state_before = self.ukf.get_state()
             self.ukf.update(observations)
+            state_after = self.ukf.get_state()
+            self.get_logger().info(f'Before: ({state_before[0]:.2f},{state_before[1]:.2f}), After: ({state_after[0]:.2f},{state_after[1]:.2f})')
     
     def publish_estimate(self, timestamp):
         """Publish estimated odometry."""

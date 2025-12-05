@@ -193,11 +193,18 @@ class UKF:
         - Compute Kalman gain: K = P_xz P_zz^-1
         - Update state and covariance
         """
+        print(f"\n=== UKF UPDATE (state: {self.x[0]:.2f}, {self.x[1]:.2f}, {self.x[2]:.2f}) ===")
+        
         for obs in landmark_observations:
             landmark_id, obs_x, obs_y = obs[0], obs[1], obs[2]
             
             if landmark_id not in self.landmarks:
                 continue
+            
+            # Debug: show landmark world position and what we observe
+            lm_world = self.landmarks[landmark_id]
+            predicted_obs = self.measurement_model(self.x, landmark_id)
+            print(f"  LM{landmark_id} world=({lm_world[0]:.1f},{lm_world[1]:.1f}) pred=({predicted_obs[0]:.2f},{predicted_obs[1]:.2f}) obs=({obs_x:.2f},{obs_y:.2f})")
             
             # Generate sigma points
             sigma_points = self.generate_sigma_points(self.x, self.P)
@@ -233,8 +240,13 @@ class UKF:
             # Update state
             z_obs = np.array([obs_x, obs_y])
             innovation = z_obs - z_pred
-            self.x = self.x + K @ innovation
+            correction = K @ innovation
+            print(f"    Innovation: ({innovation[0]:.2f},{innovation[1]:.2f}) -> Correction: dx={correction[0]:.2f}, dy={correction[1]:.2f}")
+            
+            self.x = self.x + correction
             self.x[2] = self.normalize_angle(self.x[2])
+            
+            print(f"    New state: ({self.x[0]:.2f}, {self.x[1]:.2f})")
             
             # Update covariance
             self.P = self.P - K @ P_zz @ K.T
