@@ -302,25 +302,45 @@ def auto_sweeps(out_dir: str,
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate odometry bag metrics (RMSE, convergence, stability).")
-    parser.add_argument("--bag", required=True, help="Path to rosbag2 (directory).")
+    parser = argparse.ArgumentParser(description="Evaluate odometry bag metrics or auto-run sweeps (B1/B2/B3).")
+    parser.add_argument("--auto-sweeps", action="store_true",
+                        help="Run predefined sweeps for B1/B2/B3 (launch+record+metrics).")
+    parser.add_argument("--bag", help="Path to rosbag2 (directory). Required if not using --auto-sweeps.")
     parser.add_argument("--est-topic", default="/robot_estimated_odometry", help="Estimated odometry topic.")
     parser.add_argument("--ref-topic", default="/robot_noisy", help="Reference or ground-truth odometry topic.")
     parser.add_argument("--max-dt", type=float, default=0.05, help="Max time difference (s) for alignment.")
     parser.add_argument("--convergence-threshold", type=float, default=0.5, help="Error threshold (m) for convergence.")
     parser.add_argument("--convergence-window", type=int, default=20, help="Samples needed under threshold to declare convergence.")
     parser.add_argument("--plot", action="store_true", help="Show error plot.")
+    parser.add_argument("--out-dir", default="experiment_runs", help="Output directory for auto sweeps.")
+    parser.add_argument("--run-duration", type=float, default=20.0, help="Duration (s) per auto sweep run.")
+    parser.add_argument("--topics", nargs="+",
+                        default=["/robot_noisy", "/robot_estimated_odometry", "/landmarks_observed"],
+                        help="Topics to record during auto sweeps.")
     args = parser.parse_args()
 
-    compute_metrics(
-        bag_path=args.bag,
-        est_topic=args.est_topic,
-        ref_topic=args.ref_topic,
-        max_dt=args.max_dt,
-        conv_threshold=args.convergence_threshold,
-        conv_window=args.convergence_window,
-        plot=args.plot,
-    )
+    if args.auto_sweeps:
+        auto_sweeps(
+            out_dir=args.out_dir,
+            duration=args.run_duration,
+            topics=args.topics,
+            max_dt=args.max_dt,
+            conv_threshold=args.convergence_threshold,
+            conv_window=args.convergence_window,
+            plot=args.plot,
+        )
+    else:
+        if not args.bag:
+            parser.error("--bag is required when not using --auto-sweeps")
+        compute_metrics(
+            bag_path=args.bag,
+            est_topic=args.est_topic,
+            ref_topic=args.ref_topic,
+            max_dt=args.max_dt,
+            conv_threshold=args.convergence_threshold,
+            conv_window=args.convergence_window,
+            plot=args.plot,
+        )
 
 
 if __name__ == "__main__":
