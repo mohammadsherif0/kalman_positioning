@@ -295,76 +295,81 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         return;
     }
     
-    // Task A6: Update Step
+    // Task A6: Update Step - Process ALL landmarks in ONE batch
     // ========================================================================
     
-    std::cout << "UKF Update: Current state=(" << x_(0) << ", " << x_(1) << ", " << x_(2) << ")" << std::endl;
-    
-    // Process each landmark observation
+    // Filter out unknown landmarks
+    std::vector<std::tuple<int, double, double, double>> valid_obs;
     for (const auto& obs : landmark_observations) {
-        int landmark_id = std::get<0>(obs);
-        double obs_x = std::get<1>(obs);
-        double obs_y = std::get<2>(obs);
-        
-        // Skip if landmark not known
-        if (!hasLandmark(landmark_id)) {
-            continue;
+        if (hasLandmark(std::get<0>(obs))) {
+            valid_obs.push_back(obs);
         }
-        
-        // Get landmark world position for debugging
-        auto lm = landmarks_[landmark_id];
-        std::cout << "  LM" << landmark_id << " world=(" << lm.first << ", " << lm.second << ")" << std::endl;
-        
-        // 1. Generate sigma points
-        std::vector<Eigen::VectorXd> sigma_points = generateSigmaPoints(x_, P_);
-        
-        // 2. Transform through measurement model
-        std::vector<Eigen::Vector2d> Z_sigma;
-        for (const auto& sp : sigma_points) {
-            Z_sigma.push_back(measurementModel(sp, landmark_id));
-        }
-        
-        // 3. Calculate predicted measurement mean
-        Eigen::Vector2d z_mean = Eigen::Vector2d::Zero();
-        for (size_t i = 0; i < Z_sigma.size(); i++) {
-            z_mean += Wm_[i] * Z_sigma[i];
-        }
-        
-        // Debug: print predicted vs actual observation
-        std::cout << "  LM" << landmark_id << ": predicted=(" << z_mean(0) << ", " << z_mean(1) 
-                  << "), observed=(" << obs_x << ", " << obs_y << ")" << std::endl;
-        
-        // 4. Calculate innovation covariance and cross-covariance
-        Eigen::MatrixXd P_zz = Eigen::MatrixXd::Zero(nz_, nz_);
-        Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(nx_, nz_);
-        
-        for (size_t i = 0; i < sigma_points.size(); i++) {
-            Eigen::Vector2d z_diff = Z_sigma[i] - z_mean;
-            P_zz += Wc_[i] * (z_diff * z_diff.transpose());
-            
-            Eigen::VectorXd x_diff = sigma_points[i] - x_;
-            x_diff(2) = normalizeAngle(x_diff(2));  // Normalize angle
-            P_xz += Wc_[i] * (x_diff * z_diff.transpose());
-        }
-        
-        // Add measurement noise
-        P_zz += R_;
-        
-        // 5. Compute Kalman gain
-        Eigen::MatrixXd K = P_xz * P_zz.inverse();
-        
-        // 6. Update state with innovation
-        Eigen::Vector2d z_obs(obs_x, obs_y);
-        Eigen::Vector2d innovation = z_obs - z_mean;
-        x_ = x_ + K * innovation;
-        x_(2) = normalizeAngle(x_(2));  // Normalize angle
-        
-        // 7. Update covariance
-        P_ = P_ - K * P_zz * K.transpose();
-        
-        // Ensure P remains symmetric
-        P_ = (P_ + P_.transpose()) / 2.0;
     }
+    
+    if (valid_obs.empty()) {
+        return;
+    }
+    
+    int n_obs = valid_obs.size();
+    int nz_total = n_obs * 2;  // Each landmark gives 2 measurements (x, y)
+    
+    // 1. Generate sigma points ONCE
+    std::vector<Eigen::VectorXd> sigma_points = generateSigmaPoints(x_, P_);
+    
+    // 2. Transform through measurement model for ALL landmarks
+    std::vector<Eigen::VectorXd> Z_sigma(sigma_points.size());
+    for (size_t i = 0; i < sigma_points.size(); i++) {
+        Z_sigma[i] = Eigen::VectorXd::Zero(nz_total);
+        for (size_t j = 0; j < valid_obs.size(); j++) {
+            int landmark_id = std::get<0>(valid_obs[j]);
+            Eigen::Vector2d z_pred = measurementModel(sigma_points[i], landmark_id);
+            Z_sigma[i](j * 2) = z_pred(0);
+            Z_sigma[i](j * 2 + 1) = z_pred(1);
+        }
+    }
+    
+    // 3. Calculate predicted measurement mean
+    Eigen::VectorXd z_mean = Eigen::VectorXd::Zero(nz_total);
+    for (size_t i = 0; i < Z_sigma.size(); i++) {
+        z_mean += Wm_[i] * Z_sigma[i];
+    }
+    
+    // 4. Calculate innovation covariance and cross-covariance
+    Eigen::MatrixXd P_zz = Eigen::MatrixXd::Zero(nz_total, nz_total);
+    Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(nx_, nz_total);
+    
+    for (size_t i = 0; i < sigma_points.size(); i++) {
+        Eigen::VectorXd z_diff = Z_sigma[i] - z_mean;
+        P_zz += Wc_[i] * (z_diff * z_diff.transpose());
+        
+        Eigen::VectorXd x_diff = sigma_points[i] - x_;
+        x_diff(2) = normalizeAngle(x_diff(2));
+        P_xz += Wc_[i] * (x_diff * z_diff.transpose());
+    }
+    
+    // Add measurement noise (block diagonal)
+    for (int i = 0; i < n_obs; i++) {
+        P_zz.block<2,2>(i*2, i*2) += R_;
+    }
+    
+    // 5. Compute Kalman gain
+    Eigen::MatrixXd K = P_xz * P_zz.inverse();
+    
+    // 6. Build observation vector
+    Eigen::VectorXd z_obs(nz_total);
+    for (size_t i = 0; i < valid_obs.size(); i++) {
+        z_obs(i * 2) = std::get<1>(valid_obs[i]);
+        z_obs(i * 2 + 1) = std::get<2>(valid_obs[i]);
+    }
+    
+    // 7. Update state with innovation
+    Eigen::VectorXd innovation = z_obs - z_mean;
+    x_ = x_ + K * innovation;
+    x_(2) = normalizeAngle(x_(2));
+    
+    // 8. Update covariance
+    P_ = P_ - K * P_zz * K.transpose();
+    P_ = (P_ + P_.transpose()) / 2.0;  // Ensure symmetry
 }
 
 // ============================================================================
