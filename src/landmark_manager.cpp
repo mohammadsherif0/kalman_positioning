@@ -46,6 +46,33 @@ bool LandmarkManager::loadFromCSV(const std::string& csv_path) {
         if (line.empty() || line[0] == '#') {
             continue;
         }
+        
+        std::stringstream ss(line);
+        std::string id_str, x_str, y_str;
+        
+        if (!std::getline(ss, id_str, ',')) {
+            std::cerr << "Invalid format at line " << line_num << " in " << csv_path << std::endl;
+            continue;
+        }
+        if (!std::getline(ss, x_str, ',')) {
+            std::cerr << "Invalid format at line " << line_num << " in " << csv_path << std::endl;
+            continue;
+        }
+        if (!std::getline(ss, y_str, ',')) {
+            std::cerr << "Invalid format at line " << line_num << " in " << csv_path << std::endl;
+            continue;
+        }
+        
+        try {
+            int id = std::stoi(id_str);
+            double x = std::stod(x_str);
+            double y = std::stod(y_str);
+            landmarks_[id] = {x, y};
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to parse line " << line_num << " in " << csv_path
+                      << ": " << e.what() << std::endl;
+            continue;
+        }
     }
     
     file.close();

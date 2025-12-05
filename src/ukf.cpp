@@ -34,7 +34,31 @@ UKF::UKF(double process_noise_xy, double process_noise_theta,
     // STUDENT IMPLEMENTATION STARTS HERE
     // ========================================================================
     
-    std::cout << "UKF Constructor: TODO - Implement filter initialization" << std::endl;
+    lambda_ = ALPHA * ALPHA * (nx_ + KAPPA) - nx_;
+    gamma_ = std::sqrt(nx_ + lambda_);
+    
+    x_ = Eigen::VectorXd::Zero(nx_);
+    P_ = Eigen::MatrixXd::Identity(nx_, nx_);
+    
+    Q_ = Eigen::MatrixXd::Zero(nx_, nx_);
+    Q_(0, 0) = process_noise_xy;
+    Q_(1, 1) = process_noise_xy;
+    Q_(2, 2) = process_noise_theta;
+    
+    R_ = Eigen::MatrixXd::Zero(nz_, nz_);
+    R_(0, 0) = measurement_noise_xy;
+    R_(1, 1) = measurement_noise_xy;
+    
+    const int sigma_count = 2 * nx_ + 1;
+    Wm_.resize(sigma_count, 0.0);
+    Wc_.resize(sigma_count, 0.0);
+    
+    Wm_[0] = lambda_ / (nx_ + lambda_);
+    Wc_[0] = lambda_ / (nx_ + lambda_) + (1 - ALPHA * ALPHA + BETA);
+    for (int i = 1; i < sigma_count; ++i) {
+        Wm_[i] = 1.0 / (2.0 * (nx_ + lambda_));
+        Wc_[i] = 1.0 / (2.0 * (nx_ + lambda_));
+    }
 }
 
 // ============================================================================
@@ -55,6 +79,15 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
     // ========================================================================
     
     std::vector<Eigen::VectorXd> sigma_points;
+    sigma_points.reserve(2 * nx_ + 1);
+    
+    Eigen::MatrixXd L = cov.llt().matrixL();
+    
+    sigma_points.push_back(mean);
+    for (int i = 0; i < nx_; ++i) {
+        sigma_points.push_back(mean + gamma_ * L.col(i));
+        sigma_points.push_back(mean - gamma_ * L.col(i));
+    }
     
     return sigma_points;
 }
@@ -77,6 +110,18 @@ Eigen::VectorXd UKF::processModel(const Eigen::VectorXd& state, double dt,
     // ========================================================================
     
     Eigen::VectorXd new_state = state;
+    
+    new_state(0) += dx;
+    new_state(1) += dy;
+    new_state(2) = normalizeAngle(new_state(2) + dtheta);
+    
+    if (dt > 1e-6) {
+        new_state(3) = dx / dt;
+        new_state(4) = dy / dt;
+    } else {
+        new_state(3) = 0.0;
+        new_state(4) = 0.0;
+    }
     
     return new_state;
 }
@@ -101,7 +146,10 @@ Eigen::Vector2d UKF::measurementModel(const Eigen::VectorXd& state, int landmark
         return Eigen::Vector2d::Zero();
     }
     
-    return Eigen::Vector2d::Zero();
+    const auto& landmark = landmarks_.at(landmark_id);
+    Eigen::Vector2d relative;
+    relative << landmark.first - state(0), landmark.second - state(1);
+    return relative;
 }
 
 // ============================================================================
@@ -132,7 +180,30 @@ void UKF::predict(double dt, double dx, double dy, double dtheta) {
     // STUDENT IMPLEMENTATION STARTS HERE
     // ========================================================================
     
-    std::cout << "UKF Predict: TODO - Implement prediction step" << std::endl;
+    auto sigma_points = generateSigmaPoints(x_, P_);
+    
+    std::vector<Eigen::VectorXd> sigma_pred;
+    sigma_pred.reserve(sigma_points.size());
+    for (const auto& sp : sigma_points) {
+        sigma_pred.push_back(processModel(sp, dt, dx, dy, dtheta));
+    }
+    
+    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(nx_);
+    for (size_t i = 0; i < sigma_pred.size(); ++i) {
+        x_pred += Wm_[i] * sigma_pred[i];
+    }
+    x_pred(2) = normalizeAngle(x_pred(2));
+    
+    Eigen::MatrixXd P_pred = Eigen::MatrixXd::Zero(nx_, nx_);
+    for (size_t i = 0; i < sigma_pred.size(); ++i) {
+        Eigen::VectorXd diff = sigma_pred[i] - x_pred;
+        diff(2) = normalizeAngle(diff(2));
+        P_pred += Wc_[i] * diff * diff.transpose();
+    }
+    P_pred += Q_;
+    
+    x_ = x_pred;
+    P_ = P_pred;
 }
 
 // ============================================================================
@@ -159,7 +230,55 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
     // STUDENT IMPLEMENTATION STARTS HERE
     // ========================================================================
     
-    std::cout << "UKF Update: TODO - Implement measurement update step" << std::endl;
+    for (const auto& obs : landmark_observations) {
+        int landmark_id;
+        double obs_x, obs_y, obs_noise;
+        std::tie(landmark_id, obs_x, obs_y, obs_noise) = obs;
+        
+        if (!hasLandmark(landmark_id)) {
+            continue;
+        }
+        
+        auto sigma_points = generateSigmaPoints(x_, P_);
+        std::vector<Eigen::Vector2d> z_sigma;
+        z_sigma.reserve(sigma_points.size());
+        for (const auto& sp : sigma_points) {
+            z_sigma.push_back(measurementModel(sp, landmark_id));
+        }
+        
+        Eigen::Vector2d z_pred = Eigen::Vector2d::Zero();
+        for (size_t i = 0; i < z_sigma.size(); ++i) {
+            z_pred += Wm_[i] * z_sigma[i];
+        }
+        
+        Eigen::MatrixXd P_zz = Eigen::MatrixXd::Zero(nz_, nz_);
+        Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(nx_, nz_);
+        
+        for (size_t i = 0; i < z_sigma.size(); ++i) {
+            Eigen::Vector2d z_diff = z_sigma[i] - z_pred;
+            Eigen::VectorXd x_diff = sigma_points[i] - x_;
+            x_diff(2) = normalizeAngle(x_diff(2));
+            
+            P_zz += Wc_[i] * z_diff * z_diff.transpose();
+            P_xz += Wc_[i] * x_diff * z_diff.transpose();
+        }
+        
+        Eigen::Matrix2d R_obs = R_;
+        if (obs_noise > 0.0) {
+            R_obs(0, 0) += obs_noise;
+            R_obs(1, 1) += obs_noise;
+        }
+        P_zz += R_obs;
+        
+        Eigen::MatrixXd K = P_xz * P_zz.inverse();
+        Eigen::Vector2d z_meas;
+        z_meas << obs_x, obs_y;
+        Eigen::Vector2d innovation = z_meas - z_pred;
+        
+        x_ += K * innovation;
+        x_(2) = normalizeAngle(x_(2));
+        P_ -= K * P_zz * K.transpose();
+    }
 }
 
 // ============================================================================
