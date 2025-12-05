@@ -199,6 +199,12 @@ def launch_and_record(params: Dict[str, str],
     launch_proc.wait(timeout=10)
     bag_proc.wait(timeout=10)
 
+    time.sleep(1.0)  # allow rosbag to flush to disk
+
+    meta = os.path.join(bag_name, "metadata.yaml")
+    if not os.path.exists(meta):
+        raise RuntimeError(f"Bag metadata not found at {meta}; recording may have failed")
+
     return bag_name
 
 
