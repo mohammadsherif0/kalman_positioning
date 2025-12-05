@@ -63,9 +63,14 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Install helper scripts
+# Helper script: install to lib and add aros2 run target
 install(PROGRAMS
   scripts/experiment_cli.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+add_executable(experiment_cli scripts/experiment_cli.py)
+install(TARGETS experiment_cli
   DESTINATION lib/${PROJECT_NAME}
 )
 
