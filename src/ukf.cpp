@@ -147,9 +147,19 @@ Eigen::Vector2d UKF::measurementModel(const Eigen::VectorXd& state, int landmark
     }
     
     const auto& landmark = landmarks_.at(landmark_id);
-    Eigen::Vector2d relative;
-    relative << landmark.first - state(0), landmark.second - state(1);
-    return relative;
+    Eigen::Vector2d rel_world;
+    rel_world << landmark.first - state(0), landmark.second - state(1);
+    
+    double theta = state(2);
+    double c = std::cos(theta);
+    double s = std::sin(theta);
+    
+    Eigen::Matrix2d R;
+    R << c, -s,
+         s,  c;
+    
+    // Transform world-frame offset into the robot frame
+    return R.transpose() * rel_world;
 }
 
 // ============================================================================
