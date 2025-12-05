@@ -2,6 +2,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument, LogInfo
+from launch_ros.substitutions import ParameterValue
 import os
 from ament_index_python.packages import get_package_share_directory
 
@@ -20,8 +21,8 @@ def generate_launch_description():
     # Get the package directory
     pkg_dir = get_package_share_directory('kalman_positioning')
     
-    # Default landmarks CSV path
-    landmarks_csv_default = os.path.join(pkg_dir, 'data/landmarks.csv')
+    # Default landmarks CSV path (installed to share/kalman_positioning/landmarks.csv)
+    landmarks_csv_default = os.path.join(pkg_dir, 'landmarks.csv')
     
     # Launch arguments with descriptions
     landmarks_csv_arg = DeclareLaunchArgument(
@@ -78,15 +79,13 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
-        parameters=[
-            {
-                'landmarks_csv_path': LaunchConfiguration('landmarks_csv_path'),
-                'process_noise_xy': LaunchConfiguration('process_noise_xy'),
-                'process_noise_theta': LaunchConfiguration('process_noise_theta'),
-                'measurement_noise_xy': LaunchConfiguration('measurement_noise_xy'),
-                'observation_radius': LaunchConfiguration('observation_radius'),
-            }
-        ],
+        parameters=[{
+            'landmarks_csv_path': ParameterValue(LaunchConfiguration('landmarks_csv_path'), value_type=str),
+            'process_noise_xy': ParameterValue(LaunchConfiguration('process_noise_xy'), value_type=float),
+            'process_noise_theta': ParameterValue(LaunchConfiguration('process_noise_theta'), value_type=float),
+            'measurement_noise_xy': ParameterValue(LaunchConfiguration('measurement_noise_xy'), value_type=float),
+            'observation_radius': ParameterValue(LaunchConfiguration('observation_radius'), value_type=float),
+        }],
         remappings=[
             # Uncomment and modify if you want to remap input/output topics
             # ('/robot_noisy', '/odometry/noisy'),
