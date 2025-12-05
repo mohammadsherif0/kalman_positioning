@@ -48,7 +48,7 @@ public:
         if (landmarks_csv.empty()) {
             RCLCPP_WARN(this->get_logger(), "No landmarks CSV path provided!");
         } else if (landmark_manager_->loadFromCSV(landmarks_csv)) {
-            RCLCPP_INFO(this->get_logger(), "Loaded %d landmarks from %s", 
+            RCLCPP_INFO(this->get_logger(), "Loaded %zu landmarks from %s", 
                         landmark_manager_->getNumLandmarks(), landmarks_csv.c_str());
         } else {
             RCLCPP_ERROR(this->get_logger(), "Failed to load landmarks from %s", landmarks_csv.c_str());
