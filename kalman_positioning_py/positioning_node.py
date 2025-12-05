@@ -80,17 +80,14 @@ class PositioningNode(Node):
         
         current_time = self.get_clock().now()
         
-        # Initialize from first odometry
+        # Initialize tracking from first odometry (but keep UKF at 0,0,0)
         if not self.initialized:
-            self.ukf.set_state(0, x)
-            self.ukf.set_state(1, y)
-            self.ukf.set_state(2, theta)
             self.last_x = x
             self.last_y = y
             self.last_theta = theta
             self.last_odom_time = current_time
             self.initialized = True
-            self.get_logger().info(f'UKF initialized at ({x:.2f}, {y:.2f}, {theta:.2f})')
+            self.get_logger().info(f'Odometry tracking initialized (UKF starts at 0,0,0)')
             self.publish_estimate(current_time)
             return
         

@@ -122,7 +122,7 @@ class UKF:
         Task A4: Measurement Model
         
         - Find landmark position (lx, ly) using landmark_id
-        - Calculate relative position in robot frame
+        - Calculate relative position: [lx - x, ly - y]
         """
         if landmark_id not in self.landmarks:
             return np.zeros(2)
@@ -131,20 +131,11 @@ class UKF:
         lx, ly = self.landmarks[landmark_id]
         
         # Robot state
-        rx, ry, theta = state[0], state[1], state[2]
+        rx, ry = state[0], state[1]
         
-        # Calculate relative position in world frame
-        dx_world = lx - rx
-        dy_world = ly - ry
-        
-        # Transform to robot frame
-        cos_theta = np.cos(theta)
-        sin_theta = np.sin(theta)
-        
-        rel_x = cos_theta * dx_world + sin_theta * dy_world
-        rel_y = -sin_theta * dx_world + cos_theta * dy_world
-        
-        return np.array([rel_x, rel_y])
+        # Calculate relative position: [lx - x, ly - y]
+        # Task says NO rotation - just world frame difference!
+        return np.array([lx - rx, ly - ry])
     
     def predict(self, dt, dx, dy, dtheta):
         """
