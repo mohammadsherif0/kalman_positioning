@@ -148,8 +148,9 @@ private:
         double dy = 0.0;
         double dtheta = 0.0;
         
+        rclcpp::Time current_stamp(msg->header.stamp);
         if (has_previous_odom_) {
-            dt = (msg->header.stamp - last_stamp_).seconds();
+            dt = (current_stamp - last_stamp_).seconds();
             dx = x - last_x_;
             dy = y - last_y_;
             dtheta = normalizeAngle(theta - last_theta_);
@@ -162,7 +163,7 @@ private:
         last_x_ = x;
         last_y_ = y;
         last_theta_ = theta;
-        last_stamp_ = msg->header.stamp;
+        last_stamp_ = current_stamp;
         has_previous_odom_ = true;
         
         publishEstimatedOdometry(msg->header.stamp, *msg);
@@ -181,7 +182,7 @@ private:
         // ========================================================================
         
         RCLCPP_DEBUG(this->get_logger(), 
-            "Landmark observation received with %lu points", msg->width);
+            "Landmark observation received with %u points", msg->width);
         
         // Placeholder: Parse and log the observations
         try {
