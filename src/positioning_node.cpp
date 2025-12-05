@@ -148,11 +148,15 @@ private:
         double dy = y - last_y_;
         double dtheta = normalizeAngle(theta - last_theta_);
         
+        RCLCPP_INFO(this->get_logger(), "ODOM: pos=(%.2f,%.2f,%.2f), delta=(%.3f,%.3f,%.3f)", 
+                    x, y, theta, dx, dy, dtheta);
+        
         // UKF Prediction Step
         ukf_->predict(dt, dx, dy, dtheta);
         
-        RCLCPP_DEBUG(this->get_logger(), "Predict: dt=%.3f, dx=%.3f, dy=%.3f, dtheta=%.3f", 
-                    dt, dx, dy, dtheta);
+        Eigen::VectorXd state_after_predict = ukf_->getState();
+        RCLCPP_INFO(this->get_logger(), "After PREDICT: (%.2f, %.2f, %.2f)", 
+                    state_after_predict(0), state_after_predict(1), state_after_predict(2));
         
         // Update for next callback
         last_x_ = x;

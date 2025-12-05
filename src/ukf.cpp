@@ -295,6 +295,9 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
     // Task A6: Standard UKF Update - One landmark at a time
     // ========================================================================
     
+    std::cout << "\n=== UKF UPDATE ===" << std::endl;
+    std::cout << "Current state: x=" << x_(0) << ", y=" << x_(1) << ", theta=" << x_(2) << std::endl;
+    
     for (const auto& obs : landmark_observations) {
         int landmark_id = std::get<0>(obs);
         double obs_x = std::get<1>(obs);
@@ -303,6 +306,15 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         if (!hasLandmark(landmark_id)) {
             continue;
         }
+        
+        auto lm = landmarks_[landmark_id];
+        std::cout << "  LM" << landmark_id << " world=(" << lm.first << "," << lm.second << ")" << std::endl;
+        
+        // Debug: Show what we SHOULD observe vs what we DID observe
+        Eigen::Vector2d predicted = measurementModel(x_, landmark_id);
+        std::cout << "    Predicted obs (robot frame): (" << predicted(0) << "," << predicted(1) << ")" << std::endl;
+        std::cout << "    Actual obs    (robot frame): (" << obs_x << "," << obs_y << ")" << std::endl;
+        std::cout << "    Innovation: (" << (obs_x - predicted(0)) << "," << (obs_y - predicted(1)) << ")" << std::endl;
         
         // 1. Generate sigma points
         std::vector<Eigen::VectorXd> sigma_points = generateSigmaPoints(x_, P_);
