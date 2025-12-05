@@ -37,45 +37,39 @@ UKF::UKF(double process_noise_xy, double process_noise_theta,
     // 1. Initialize state vector x = [0, 0, 0, 0, 0]
     x_ = Eigen::VectorXd::Zero(nx_);
     
-    // 2. Initialize state covariance P with reasonable uncertainty
+    // 2. Initialize P as identity matrix (Task A1)
     P_ = Eigen::MatrixXd::Identity(nx_, nx_);
-    P_(0, 0) = 1.0;   // 1m uncertainty in x
-    P_(1, 1) = 1.0;   // 1m uncertainty in y  
-    P_(2, 2) = 0.1;   // 0.3 rad (~17 deg) uncertainty in theta
-    P_(3, 3) = 0.1;   // velocity uncertainty
-    P_(4, 4) = 0.1;   // velocity uncertainty
     
-    // 3. Set process noise covariance Q
+    // 3. Set Q = diag(process_noise_xy, process_noise_xy, process_noise_theta, 0, 0) (Task A1)
     Q_ = Eigen::MatrixXd::Zero(nx_, nx_);
     Q_(0, 0) = process_noise_xy;      // x
     Q_(1, 1) = process_noise_xy;      // y
     Q_(2, 2) = process_noise_theta;   // theta
-    Q_(3, 3) = 0.1;                   // vx (small)
-    Q_(4, 4) = 0.1;                   // vy (small)
+    Q_(3, 3) = 0.0;                   // vx (as specified)
+    Q_(4, 4) = 0.0;                   // vy (as specified)
     
     // 4. Set measurement noise covariance R
     R_ = Eigen::MatrixXd::Identity(nz_, nz_) * measurement_noise_xy;
     
-    // 5. Calculate UKF parameters for ALL POSITIVE weights
-    // Using kappa = 1 ensures numerical stability
-    double kappa = 1.0;
-    lambda_ = ALPHA * ALPHA * (nx_ + kappa) - nx_;  // alpha=1, so lambda = 1
-    gamma_ = std::sqrt(nx_ + lambda_);               // gamma = sqrt(6) = 2.45
+    // 5. Calculate UKF parameters: λ, γ, and weights (Task A1)
+    // Using parameters that ensure positive weights for stability
+    double alpha = 1.0;   // Spread parameter
+    double beta = 0.0;    // Using 0 instead of 2 to avoid huge W0_c
+    double kappa = 2.0;   // Secondary scaling (3-n would be -2, use 2 instead)
     
-    // 6. Calculate weights (simplified for stability)
+    lambda_ = alpha * alpha * (nx_ + kappa) - nx_;  // = 1*(5+2) - 5 = 2
+    gamma_ = std::sqrt(nx_ + lambda_);               // = sqrt(7) = 2.646
+    
+    // 6. Calculate weights W^m_i, W^c_i (Task A1)
     Wm_.resize(2 * nx_ + 1);
     Wc_.resize(2 * nx_ + 1);
     
-    // Use equal weights for maximum stability
-    double weight_0 = 1.0 / (2.0 * nx_ + 1.0);
-    double weight_i = 1.0 / (2.0 * nx_ + 1.0);
-    
-    Wm_[0] = weight_0;
-    Wc_[0] = weight_0;
+    Wm_[0] = lambda_ / (nx_ + lambda_);                                    // = 2/7 = 0.286
+    Wc_[0] = lambda_ / (nx_ + lambda_) + (1.0 - alpha * alpha + beta);   // = 2/7 + 0 = 0.286
     
     for (int i = 1; i < 2 * nx_ + 1; i++) {
-        Wm_[i] = weight_i;
-        Wc_[i] = weight_i;
+        Wm_[i] = 1.0 / (2.0 * (nx_ + lambda_));  // = 1/14 = 0.071
+        Wc_[i] = 1.0 / (2.0 * (nx_ + lambda_));  // = 1/14 = 0.071
     }
     
     std::cout << "UKF Initialized: lambda=" << lambda_ << ", gamma=" << gamma_ << std::endl;
@@ -104,30 +98,28 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
     // 1. First sigma point is the mean
     sigma_points.push_back(mean);
     
-    // 2. Compute matrix square root using eigenvalue decomposition
-    // P = V * D * V^T, so sqrt(P) = V * sqrt(D)
-    // Use conservative scaling for stability
+    // 2. Compute matrix square root using eigenvalue decomposition (Task A2)
+    // Instead of Cholesky: P = V * D * V^T, so sqrt(P) = V * sqrt(D)
     
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(cov);
     Eigen::VectorXd eigenvalues = solver.eigenvalues();
     Eigen::MatrixXd eigenvectors = solver.eigenvectors();
     
-    // Ensure positive eigenvalues
+    // Ensure positive eigenvalues for numerical stability
     for (int i = 0; i < eigenvalues.size(); i++) {
         if (eigenvalues(i) < 1e-10) eigenvalues(i) = 1e-10;
     }
     
-    // Compute sqrt(P) = V * sqrt(D) with conservative scaling
-    // Using sqrt(3) for moderate spread (standard UKF uses sqrt(n+lambda))
-    double scale = std::sqrt(3.0);
-    Eigen::MatrixXd sqrt_matrix = eigenvectors * eigenvalues.cwiseSqrt().asDiagonal() * scale;
+    // Compute sqrt(P) = V * sqrt(D), then scale by gamma
+    // This gives us γ*sqrt(P) as required for sigma points
+    Eigen::MatrixXd sqrt_matrix = eigenvectors * eigenvalues.cwiseSqrt().asDiagonal();
     
-    // 3. Generate 2*n sigma points
+    // 3. Generate 2*n sigma points: Xi = x ± γ*Li (Task A2)
     for (int i = 0; i < n; i++) {
-        sigma_points.push_back(mean + sqrt_matrix.col(i));  // Positive direction
+        sigma_points.push_back(mean + gamma_ * sqrt_matrix.col(i));  // Positive direction
     }
     for (int i = 0; i < n; i++) {
-        sigma_points.push_back(mean - sqrt_matrix.col(i));  // Negative direction
+        sigma_points.push_back(mean - gamma_ * sqrt_matrix.col(i));  // Negative direction
     }
     
     return sigma_points;
@@ -355,10 +347,10 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         Eigen::Vector2d z_obs(obs_x, obs_y);
         Eigen::Vector2d innovation = z_obs - z_mean;
         
-        // Limit innovation to prevent huge jumps
+        // Limit innovation to prevent huge jumps (optional safety check)
         double innovation_norm = innovation.norm();
-        if (innovation_norm > 2.0) {  // Max 2m correction per landmark
-            innovation = innovation / innovation_norm * 2.0;
+        if (innovation_norm > 5.0) {  // Max 5m correction per landmark
+            innovation = innovation / innovation_norm * 5.0;
         }
         
         x_ = x_ + K * innovation;
