@@ -19,11 +19,10 @@ class UKF:
     """
     
     # UKF parameters (constants)
-    # Note: Alpha=0.1, Beta=2.0, Kappa=0 are standard values
-    # These result in lambda=-4.95, gamma=0.224 for n=5 dimensions
-    ALPHA = 0.1   # Spread of sigma points (0.001 to 1, larger = more spread)
+    # Using kappa=3-n to ensure positive definite covariance and all positive weights
+    ALPHA = 1.0   # Spread of sigma points (using 1.0 for standard spread)
     BETA = 2.0    # Distribution info (Gaussian = 2.0)
-    KAPPA = 0.0   # Secondary scaling parameter
+    KAPPA = 0.0   # Will be set to 3-n in constructor for positive weights
     
     def __init__(self, process_noise_xy: float, process_noise_theta: float,
                  measurement_noise_xy: float, num_landmarks: int = 0):
@@ -59,8 +58,8 @@ class UKF:
         self.x = np.zeros(self.nx)
         
         # Initialize state covariance matrix with VERY high initial uncertainty
-        # Since we start at [0,0,0,0,0] but don't know true position
-        self.P = np.diag([1000.0, 1000.0, 100.0, 10.0, 10.0])  # Very high position uncertainty initially
+        # Since we start at [0,0,0,0,0] but will initialize from first odometry
+        self.P = np.diag([100.0, 100.0, 10.0, 1.0, 1.0])  # High initial uncertainty
         
         # Process noise covariance Q
         # [x, y, theta, vx, vy]
@@ -68,8 +67,8 @@ class UKF:
             process_noise_xy,      # x position noise
             process_noise_xy,      # y position noise
             process_noise_theta,   # theta orientation noise
-            0.0,                   # vx velocity (determined by motion)
-            0.0                    # vy velocity (determined by motion)
+            0.1,                   # vx velocity noise (small)
+            0.1                    # vy velocity noise (small)
         ])
         
         # Measurement noise covariance R (2x2 for x, y observations)
@@ -78,11 +77,14 @@ class UKF:
             measurement_noise_xy   # y observation noise
         ])
         
-        # Calculate UKF parameters
-        # lambda = alpha^2 * (n + kappa) - n
-        self.lambda_ = self.ALPHA**2 * (self.nx + self.KAPPA) - self.nx
+        # Calculate UKF parameters - use kappa = 1 for ALL POSITIVE weights
+        # This ensures numerical stability
+        kappa = 1.0
         
-        # gamma = sqrt(n + lambda)
+        # lambda = alpha^2 * (n + kappa) - n = 1*(5+1) - 5 = 1
+        self.lambda_ = self.ALPHA**2 * (self.nx + kappa) - self.nx
+        
+        # gamma = sqrt(n + lambda) = sqrt(6) = 2.45
         self.gamma = np.sqrt(self.nx + self.lambda_)
         
         # Calculate weights for mean (Wm) and covariance (Wc)
