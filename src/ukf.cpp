@@ -298,6 +298,8 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
     // Task A6: Update Step
     // ========================================================================
     
+    std::cout << "UKF Update: Current state=(" << x_(0) << ", " << x_(1) << ", " << x_(2) << ")" << std::endl;
+    
     // Process each landmark observation
     for (const auto& obs : landmark_observations) {
         int landmark_id = std::get<0>(obs);
@@ -308,6 +310,10 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         if (!hasLandmark(landmark_id)) {
             continue;
         }
+        
+        // Get landmark world position for debugging
+        auto lm = landmarks_[landmark_id];
+        std::cout << "  LM" << landmark_id << " world=(" << lm.first << ", " << lm.second << ")" << std::endl;
         
         // 1. Generate sigma points
         std::vector<Eigen::VectorXd> sigma_points = generateSigmaPoints(x_, P_);
@@ -323,6 +329,10 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         for (size_t i = 0; i < Z_sigma.size(); i++) {
             z_mean += Wm_[i] * Z_sigma[i];
         }
+        
+        // Debug: print predicted vs actual observation
+        std::cout << "  LM" << landmark_id << ": predicted=(" << z_mean(0) << ", " << z_mean(1) 
+                  << "), observed=(" << obs_x << ", " << obs_y << ")" << std::endl;
         
         // 4. Calculate innovation covariance and cross-covariance
         Eigen::MatrixXd P_zz = Eigen::MatrixXd::Zero(nz_, nz_);

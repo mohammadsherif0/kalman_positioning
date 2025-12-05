@@ -193,6 +193,9 @@ private:
                 double obs_x = static_cast<double>(*iter_x);
                 double obs_y = static_cast<double>(*iter_y);
                 
+                RCLCPP_DEBUG(this->get_logger(), "  Landmark %d: obs=(%.2f, %.2f)", 
+                            landmark_id, obs_x, obs_y);
+                
                 // Add observation (distance not used in our measurement model)
                 observations.push_back(std::make_tuple(landmark_id, obs_x, obs_y, 0.0));
             }
