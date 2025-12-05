@@ -7,9 +7,9 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs_py.point_cloud2 as pc2
 from geometry_msgs.msg import Quaternion
-import tf_transformations
 import csv
 import numpy as np
+import math
 
 from .ukf import UKF
 
@@ -143,12 +143,12 @@ class PositioningNode(Node):
         msg.pose.pose.position.y = state[1]
         msg.pose.pose.position.z = 0.0
         
-        # Orientation
-        q = tf_transformations.quaternion_from_euler(0, 0, state[2])
-        msg.pose.pose.orientation.x = q[0]
-        msg.pose.pose.orientation.y = q[1]
-        msg.pose.pose.orientation.z = q[2]
-        msg.pose.pose.orientation.w = q[3]
+        # Orientation (convert yaw to quaternion)
+        yaw = state[2]
+        msg.pose.pose.orientation.x = 0.0
+        msg.pose.pose.orientation.y = 0.0
+        msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
+        msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
         
         # Velocity
         msg.twist.twist.linear.x = state[3]
@@ -159,7 +159,10 @@ class PositioningNode(Node):
     @staticmethod
     def quaternion_to_yaw(q):
         """Convert quaternion to yaw angle."""
-        return tf_transformations.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
+        # Extract yaw from quaternion
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
     
     @staticmethod
     def normalize_angle(angle):
