@@ -38,7 +38,7 @@ UKF::UKF(double process_noise_xy, double process_noise_theta,
     x_ = Eigen::VectorXd::Zero(nx_);
     
     // 2. Initialize state covariance P as identity matrix
-    P_ = Eigen::MatrixXd::Identity(nx_, nx_) * 100.0;  // High initial uncertainty
+    P_ = Eigen::MatrixXd::Identity(nx_, nx_) * 10.0;  // Moderate initial uncertainty
     
     // 3. Set process noise covariance Q
     Q_ = Eigen::MatrixXd::Zero(nx_, nx_);
@@ -57,16 +57,20 @@ UKF::UKF(double process_noise_xy, double process_noise_theta,
     lambda_ = ALPHA * ALPHA * (nx_ + kappa) - nx_;  // alpha=1, so lambda = 1
     gamma_ = std::sqrt(nx_ + lambda_);               // gamma = sqrt(6) = 2.45
     
-    // 6. Calculate weights
+    // 6. Calculate weights (simplified for stability)
     Wm_.resize(2 * nx_ + 1);
     Wc_.resize(2 * nx_ + 1);
     
-    Wm_[0] = lambda_ / (nx_ + lambda_);
-    Wc_[0] = lambda_ / (nx_ + lambda_) + (1.0 - ALPHA * ALPHA + BETA);
+    // Use equal weights for maximum stability
+    double weight_0 = 1.0 / (2.0 * nx_ + 1.0);
+    double weight_i = 1.0 / (2.0 * nx_ + 1.0);
+    
+    Wm_[0] = weight_0;
+    Wc_[0] = weight_0;
     
     for (int i = 1; i < 2 * nx_ + 1; i++) {
-        Wm_[i] = 1.0 / (2.0 * (nx_ + lambda_));
-        Wc_[i] = 1.0 / (2.0 * (nx_ + lambda_));
+        Wm_[i] = weight_i;
+        Wc_[i] = weight_i;
     }
     
     std::cout << "UKF Initialized: lambda=" << lambda_ << ", gamma=" << gamma_ << std::endl;
@@ -97,9 +101,9 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
     
     // 2. Compute matrix square root using eigenvalue decomposition
     // P = V * D * V^T, so sqrt(P) = V * sqrt(D)
-    Eigen::MatrixXd scaled_cov = (n + lambda_) * cov;
+    // Then scale by sqrt(2*n+1) for equal weights
     
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(scaled_cov);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(cov);
     Eigen::VectorXd eigenvalues = solver.eigenvalues();
     Eigen::MatrixXd eigenvectors = solver.eigenvectors();
     
@@ -108,8 +112,9 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
         if (eigenvalues(i) < 1e-10) eigenvalues(i) = 1e-10;
     }
     
-    // Compute sqrt(P) = V * sqrt(D)
-    Eigen::MatrixXd sqrt_matrix = eigenvectors * eigenvalues.cwiseSqrt().asDiagonal();
+    // Compute sqrt(P) = V * sqrt(D), then scale for equal weights
+    double scale = std::sqrt(2.0 * n + 1.0);
+    Eigen::MatrixXd sqrt_matrix = eigenvectors * eigenvalues.cwiseSqrt().asDiagonal() * scale;
     
     // 3. Generate 2*n sigma points
     for (int i = 0; i < n; i++) {
