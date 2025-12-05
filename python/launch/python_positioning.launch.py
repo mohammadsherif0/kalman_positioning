@@ -14,7 +14,7 @@ def generate_launch_description():
     pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     landmarks_csv_default = os.path.join(pkg_dir, 'landmarks.csv')
     
-    # Launch arguments
+    # Launch arguments - TUNED FOR BETTER CONVERGENCE
     landmarks_csv_arg = DeclareLaunchArgument(
         'landmarks_csv_path',
         default_value=landmarks_csv_default,
@@ -23,19 +23,19 @@ def generate_launch_description():
     
     process_noise_xy_arg = DeclareLaunchArgument(
         'process_noise_xy',
-        default_value='1e-4',
+        default_value='0.01',  # Increased from 1e-4 for faster adaptation
         description='Process noise covariance for x,y position'
     )
     
     process_noise_theta_arg = DeclareLaunchArgument(
         'process_noise_theta',
-        default_value='1e-4',
+        default_value='0.01',  # Increased from 1e-4 for faster adaptation
         description='Process noise covariance for orientation'
     )
     
     measurement_noise_xy_arg = DeclareLaunchArgument(
         'measurement_noise_xy',
-        default_value='0.01',
+        default_value='0.1',  # Increased to trust observations more initially
         description='Measurement noise covariance for landmark observations'
     )
     
@@ -70,4 +70,3 @@ def generate_launch_description():
         observation_radius_arg,
         positioning_node,
     ])
-

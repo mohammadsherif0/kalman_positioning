@@ -58,9 +58,9 @@ class UKF:
         # Initialize state vector: [x, y, theta, vx, vy]
         self.x = np.zeros(self.nx)
         
-        # Initialize state covariance matrix with high initial uncertainty
+        # Initialize state covariance matrix with VERY high initial uncertainty
         # Since we start at [0,0,0,0,0] but don't know true position
-        self.P = np.diag([100.0, 100.0, 10.0, 1.0, 1.0])  # High position uncertainty initially
+        self.P = np.diag([1000.0, 1000.0, 100.0, 10.0, 10.0])  # Very high position uncertainty initially
         
         # Process noise covariance Q
         # [x, y, theta, vx, vy]
