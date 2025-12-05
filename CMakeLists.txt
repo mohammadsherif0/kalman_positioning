@@ -63,16 +63,12 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Helper script: install to lib and add aros2 run target
+# Helper script: install to lib and register for ros2 run
 install(PROGRAMS
   scripts/experiment_cli.py
   DESTINATION lib/${PROJECT_NAME}
 )
-
-add_executable(experiment_cli scripts/experiment_cli.py)
-install(TARGETS experiment_cli
-  DESTINATION lib/${PROJECT_NAME}
-)
+ament_index_register_resource("ros2run" CONTENT "experiment_cli.py")
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
