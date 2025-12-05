@@ -176,71 +176,82 @@ class UKF:
     
     def update(self, landmark_observations):
         """
-        Task A6: Update Step
+        Task A6: Update Step - Process ALL landmarks in ONE batch
         
-        For each landmark observation:
         - Generate sigma points and transform through measurement model
-        - Calculate ẑ, P_zz, and P_xz
+        - Calculate ẑ, P_zz, and P_xz for ALL landmarks together
         - Compute Kalman gain: K = P_xz P_zz^-1
-        - Update state and covariance
+        - Update state and covariance ONCE
         """
-        print(f"\n=== UKF UPDATE (state: {self.x[0]:.2f}, {self.x[1]:.2f}, {self.x[2]:.2f}) ===")
+        if not landmark_observations:
+            return
         
-        for obs in landmark_observations:
-            landmark_id, obs_x, obs_y = obs[0], obs[1], obs[2]
+        # Filter valid landmarks
+        valid_obs = [(lid, ox, oy) for lid, ox, oy in landmark_observations if lid in self.landmarks]
+        if not valid_obs:
+            return
+        
+        n_obs = len(valid_obs)
+        nz_total = n_obs * 2
+        
+        print(f"\n=== UKF UPDATE with {n_obs} landmarks (state: {self.x[0]:.2f}, {self.x[1]:.2f}) ===")
+        
+        # Generate sigma points ONCE
+        sigma_points = self.generate_sigma_points(self.x, self.P)
+        
+        # Transform ALL sigma points through ALL measurement models
+        Z_sigma = []
+        for sp in sigma_points:
+            z_all = []
+            for landmark_id, _, _ in valid_obs:
+                z = self.measurement_model(sp, landmark_id)
+                z_all.extend([z[0], z[1]])
+            Z_sigma.append(np.array(z_all))
+        
+        # Calculate predicted measurement mean ẑ
+        z_pred = np.zeros(nz_total)
+        for i, z in enumerate(Z_sigma):
+            z_pred += self.Wm[i] * z
+        
+        # Calculate P_zz and P_xz
+        P_zz = np.zeros((nz_total, nz_total))
+        P_xz = np.zeros((self.n, nz_total))
+        
+        for i in range(len(sigma_points)):
+            z_diff = Z_sigma[i] - z_pred
+            P_zz += self.Wc[i] * np.outer(z_diff, z_diff)
             
-            if landmark_id not in self.landmarks:
-                continue
-            
-            # Debug: show landmark world position and what we observe
-            lm_world = self.landmarks[landmark_id]
-            predicted_obs = self.measurement_model(self.x, landmark_id)
-            print(f"  LM{landmark_id} world=({lm_world[0]:.1f},{lm_world[1]:.1f}) pred=({predicted_obs[0]:.2f},{predicted_obs[1]:.2f}) obs=({obs_x:.2f},{obs_y:.2f})")
-            
-            # Generate sigma points
-            sigma_points = self.generate_sigma_points(self.x, self.P)
-            
-            # Transform through measurement model
-            Z_sigma = []
-            for sp in sigma_points:
-                Z_sigma.append(self.measurement_model(sp, landmark_id))
-            
-            # Calculate predicted measurement mean ẑ
-            z_pred = np.zeros(2)
-            for i, z in enumerate(Z_sigma):
-                z_pred += self.Wm[i] * z
-            
-            # Calculate P_zz and P_xz
-            P_zz = np.zeros((2, 2))
-            P_xz = np.zeros((self.n, 2))
-            
-            for i in range(len(sigma_points)):
-                z_diff = Z_sigma[i] - z_pred
-                P_zz += self.Wc[i] * np.outer(z_diff, z_diff)
-                
-                x_diff = sigma_points[i] - self.x
-                x_diff[2] = self.normalize_angle(x_diff[2])
-                P_xz += self.Wc[i] * np.outer(x_diff, z_diff)
-            
-            # Add measurement noise
-            P_zz += self.R
-            
-            # Compute Kalman gain
-            K = P_xz @ np.linalg.inv(P_zz)
-            
-            # Update state
-            z_obs = np.array([obs_x, obs_y])
-            innovation = z_obs - z_pred
-            correction = K @ innovation
-            print(f"    Innovation: ({innovation[0]:.2f},{innovation[1]:.2f}) -> Correction: dx={correction[0]:.2f}, dy={correction[1]:.2f}")
-            
-            self.x = self.x + correction
-            self.x[2] = self.normalize_angle(self.x[2])
-            
-            print(f"    New state: ({self.x[0]:.2f}, {self.x[1]:.2f})")
-            
-            # Update covariance
-            self.P = self.P - K @ P_zz @ K.T
+            x_diff = sigma_points[i] - self.x
+            x_diff[2] = self.normalize_angle(x_diff[2])
+            P_xz += self.Wc[i] * np.outer(x_diff, z_diff)
+        
+        # Add measurement noise (block diagonal)
+        for i in range(n_obs):
+            P_zz[i*2:i*2+2, i*2:i*2+2] += self.R
+        
+        # Compute Kalman gain
+        K = P_xz @ np.linalg.inv(P_zz)
+        
+        # Build observation vector
+        z_obs = np.zeros(nz_total)
+        for i, (_, ox, oy) in enumerate(valid_obs):
+            z_obs[i*2] = ox
+            z_obs[i*2+1] = oy
+        
+        # Update state ONCE with ALL observations
+        innovation = z_obs - z_pred
+        correction = K @ innovation
+        
+        print(f"  Total innovation norm: {np.linalg.norm(innovation):.2f}")
+        print(f"  Position correction: dx={correction[0]:.2f}, dy={correction[1]:.2f}")
+        
+        self.x = self.x + correction
+        self.x[2] = self.normalize_angle(self.x[2])
+        
+        print(f"  New state: ({self.x[0]:.2f}, {self.x[1]:.2f}, {self.x[2]:.2f})")
+        
+        # Update covariance ONCE
+        self.P = self.P - K @ P_zz @ K.T
     
     @staticmethod
     def normalize_angle(angle):
