@@ -63,6 +63,12 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Install helper scripts
+install(PROGRAMS
+  scripts/experiment_cli.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
