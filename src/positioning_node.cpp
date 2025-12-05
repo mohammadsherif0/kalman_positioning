@@ -151,6 +151,9 @@ private:
         // UKF Prediction Step
         ukf_->predict(dt, dx, dy, dtheta);
         
+        RCLCPP_DEBUG(this->get_logger(), "Predict: dt=%.3f, dx=%.3f, dy=%.3f, dtheta=%.3f", 
+                    dt, dx, dy, dtheta);
+        
         // Update for next callback
         last_x_ = x;
         last_y_ = y;
@@ -171,8 +174,11 @@ private:
      */
     void landmarksObservedCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         if (!initialized_) {
+            RCLCPP_DEBUG(this->get_logger(), "Landmark callback: Not initialized yet");
             return;
         }
+        
+        RCLCPP_DEBUG(this->get_logger(), "Landmark observation received with %u points", msg->width);
         
         // Parse landmark observations
         std::vector<std::tuple<int, double, double, double>> observations;
@@ -194,8 +200,15 @@ private:
             // UKF Update Step
             if (!observations.empty()) {
                 ukf_->update(observations);
-                RCLCPP_DEBUG(this->get_logger(), "Updated with %zu landmark observations", 
+                RCLCPP_INFO(this->get_logger(), "Updated with %zu landmark observations", 
                             observations.size());
+                
+                // Log current estimate
+                Eigen::VectorXd state = ukf_->getState();
+                RCLCPP_INFO(this->get_logger(), "  Estimate: (%.2f, %.2f, %.2f)", 
+                           state(0), state(1), state(2));
+            } else {
+                RCLCPP_WARN(this->get_logger(), "No landmarks observed!");
             }
             
         } catch (const std::exception& e) {
