@@ -43,8 +43,28 @@ bool LandmarkManager::loadFromCSV(const std::string& csv_path) {
     while (std::getline(file, line)) {
         ++line_num;
         
+        // Skip empty lines and comments
         if (line.empty() || line[0] == '#') {
             continue;
+        }
+        
+        // Parse CSV line: id,x,y
+        std::stringstream ss(line);
+        std::string id_str, x_str, y_str;
+        
+        if (std::getline(ss, id_str, ',') && 
+            std::getline(ss, x_str, ',') && 
+            std::getline(ss, y_str)) {
+            
+            try {
+                int id = std::stoi(id_str);
+                double x = std::stod(x_str);
+                double y = std::stod(y_str);
+                
+                landmarks_[id] = std::make_pair(x, y);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Failed to parse line " << line_num << ": " << line << std::endl;
+            }
         }
     }
     

@@ -44,6 +44,13 @@ public:
     Eigen::VectorXd getState() const { return x_; }
     
     /**
+     * @brief Set state component
+     * @param index State index (0=x, 1=y, 2=theta, 3=vx, 4=vy)
+     * @param value Value to set
+     */
+    void setState(int index, double value) { x_(index) = value; }
+    
+    /**
      * @brief Get state covariance
      */
     Eigen::MatrixXd getCovariance() const { return P_; }
@@ -64,9 +71,9 @@ public:
     bool hasLandmark(int id) const;
 
 private:
-    static constexpr double ALPHA = 1e-3;  // Spread of sigma points
-    static constexpr double BETA = 2.0;     // Distribution info (Gaussian)
-    static constexpr double KAPPA = 0.0;    // Secondary scaling
+    static constexpr double ALPHA = 1.0;   // Spread of sigma points (for positive weights)
+    static constexpr double BETA = 2.0;    // Distribution info (Gaussian)
+    static constexpr double KAPPA = 0.0;   // Secondary scaling (overridden in constructor)
     
     int nx_;  // State dimension
     int nz_;  // Measurement dimension per landmark
