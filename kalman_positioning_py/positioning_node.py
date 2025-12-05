@@ -232,13 +232,19 @@ class PositioningNode(Node):
             return
         
         try:
-            # Parse PointCloud2 data; incoming points are in map frame.
-            # Convert to robot frame using current UKF estimate so the
-            # measurement model stays consistent (expects robot-frame deltas).
+            # Parse PointCloud2 data; incoming points appear to be in map frame.
+            # Convert to robot frame using the latest odometry pose (not the UKF
+            # state) so the measurement comes from sensor data and can correct
+            # the filter state.
+            if self.last_odom_msg is None:
+                return
+
+            odom_theta = self.quaternion_to_yaw(self.last_odom_msg.pose.pose.orientation)
+            odom_x = self.last_odom_msg.pose.pose.position.x
+            odom_y = self.last_odom_msg.pose.pose.position.y
+            c, s = math.cos(odom_theta), math.sin(odom_theta)
+
             observations = []
-            x_est, y_est = self.ukf.get_position()
-            theta_est = self.ukf.get_orientation()
-            c, s = math.cos(theta_est), math.sin(theta_est)
             
             for point in point_cloud2.read_points(msg, field_names=('x', 'y', 'id'), skip_nans=True):
                 landmark_id = int(point[2])
@@ -246,8 +252,8 @@ class PositioningNode(Node):
                 obs_y = float(point[1])
                 
                 if self.ukf.has_landmark(landmark_id):
-                    dx = obs_x - x_est
-                    dy = obs_y - y_est
+                    dx = obs_x - odom_x
+                    dy = obs_y - odom_y
                     rel_x = c * dx + s * dy
                     rel_y = -s * dx + c * dy
                     observations.append((landmark_id, rel_x, rel_y))
