@@ -232,19 +232,27 @@ class PositioningNode(Node):
             return
         
         try:
-            # Parse PointCloud2 data
+            # Parse PointCloud2 data; incoming points are in map frame.
+            # Convert to robot frame using current UKF estimate so the
+            # measurement model stays consistent (expects robot-frame deltas).
             observations = []
+            x_est, y_est = self.ukf.get_position()
+            theta_est = self.ukf.get_orientation()
+            c, s = math.cos(theta_est), math.sin(theta_est)
             
             for point in point_cloud2.read_points(msg, field_names=('x', 'y', 'id'), skip_nans=True):
                 landmark_id = int(point[2])
                 obs_x = float(point[0])
                 obs_y = float(point[1])
                 
-                # Check if landmark is known
                 if self.ukf.has_landmark(landmark_id):
-                    observations.append((landmark_id, obs_x, obs_y))
+                    dx = obs_x - x_est
+                    dy = obs_y - y_est
+                    rel_x = c * dx + s * dy
+                    rel_y = -s * dx + c * dy
+                    observations.append((landmark_id, rel_x, rel_y))
                     self.get_logger().debug(
-                        f'Landmark {landmark_id} observed at ({obs_x:.2f}, {obs_y:.2f})'
+                        f'Landmark {landmark_id} map=({obs_x:.2f},{obs_y:.2f}) rel=({rel_x:.2f},{rel_y:.2f})'
                     )
             
             if observations:
