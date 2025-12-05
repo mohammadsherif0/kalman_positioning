@@ -120,6 +120,7 @@ class PositioningNode(Node):
     def landmarks_callback(self, msg):
         """Handle landmark observations - UKF update step."""
         if not self.initialized:
+            self.get_logger().warn('Landmarks received but not initialized yet - skipping')
             return
         
         # Parse observations

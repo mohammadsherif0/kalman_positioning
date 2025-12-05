@@ -25,8 +25,8 @@ class UKF:
         # Initialize state x = [0, 0, 0, 0, 0]^T
         self.x = np.zeros(5)
         
-        # Initialize P as identity matrix
-        self.P = np.eye(5)
+        # Initialize P as identity matrix (with high initial uncertainty)
+        self.P = np.eye(5) * 100.0  # High uncertainty initially
         
         # Set Q = diag(process_noise_xy, process_noise_xy, process_noise_theta, 0, 0)
         self.Q = np.diag([process_noise_xy, process_noise_xy, process_noise_theta, 0.0, 0.0])
