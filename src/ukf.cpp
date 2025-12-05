@@ -37,8 +37,13 @@ UKF::UKF(double process_noise_xy, double process_noise_theta,
     // 1. Initialize state vector x = [0, 0, 0, 0, 0]
     x_ = Eigen::VectorXd::Zero(nx_);
     
-    // 2. Initialize state covariance P as identity matrix
-    P_ = Eigen::MatrixXd::Identity(nx_, nx_) * 10.0;  // Moderate initial uncertainty
+    // 2. Initialize state covariance P with reasonable uncertainty
+    P_ = Eigen::MatrixXd::Identity(nx_, nx_);
+    P_(0, 0) = 1.0;   // 1m uncertainty in x
+    P_(1, 1) = 1.0;   // 1m uncertainty in y  
+    P_(2, 2) = 0.1;   // 0.3 rad (~17 deg) uncertainty in theta
+    P_(3, 3) = 0.1;   // velocity uncertainty
+    P_(4, 4) = 0.1;   // velocity uncertainty
     
     // 3. Set process noise covariance Q
     Q_ = Eigen::MatrixXd::Zero(nx_, nx_);
@@ -112,9 +117,9 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
         if (eigenvalues(i) < 1e-10) eigenvalues(i) = 1e-10;
     }
     
-    // Compute sqrt(P) = V * sqrt(D) with moderate scaling
-    // Using sqrt(n) instead of sqrt(2n+1) for more conservative spread
-    double scale = std::sqrt(static_cast<double>(n));
+    // Compute sqrt(P) = V * sqrt(D) with conservative scaling
+    // Using sqrt(3) for moderate spread (standard UKF uses sqrt(n+lambda))
+    double scale = std::sqrt(3.0);
     Eigen::MatrixXd sqrt_matrix = eigenvectors * eigenvalues.cwiseSqrt().asDiagonal() * scale;
     
     // 3. Generate 2*n sigma points
@@ -295,7 +300,7 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         return;
     }
     
-    // Task A6: SIMPLIFIED Update - One landmark at a time with VERY AGGRESSIVE Kalman gain
+    // Task A6: Standard UKF Update - One landmark at a time
     // ========================================================================
     
     for (const auto& obs : landmark_observations) {
@@ -307,42 +312,65 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
             continue;
         }
         
-        // Get landmark world position
-        auto lm = landmarks_[landmark_id];
-        double lx = lm.first;
-        double ly = lm.second;
+        // 1. Generate sigma points
+        std::vector<Eigen::VectorXd> sigma_points = generateSigmaPoints(x_, P_);
         
-        // Predict what we should observe
-        Eigen::Vector2d z_pred = measurementModel(x_, landmark_id);
+        // 2. Transform through measurement model
+        std::vector<Eigen::Vector2d> Z_sigma;
+        for (const auto& sp : sigma_points) {
+            Z_sigma.push_back(measurementModel(sp, landmark_id));
+        }
         
-        // Calculate innovation
-        Eigen::Vector2d innovation;
-        innovation(0) = obs_x - z_pred(0);
-        innovation(1) = obs_y - z_pred(1);
+        // 3. Calculate predicted measurement mean
+        Eigen::Vector2d z_mean = Eigen::Vector2d::Zero();
+        for (size_t i = 0; i < Z_sigma.size(); i++) {
+            z_mean += Wm_[i] * Z_sigma[i];
+        }
         
-        // Back-transform the innovation to estimate position error in world frame
-        double theta = x_(2);
-        double cos_theta = std::cos(theta);
-        double sin_theta = std::sin(theta);
+        // 4. Calculate innovation covariance and cross-covariance
+        Eigen::MatrixXd P_zz = Eigen::MatrixXd::Zero(nz_, nz_);
+        Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(nx_, nz_);
         
-        // Innovation in robot frame -> position correction in world frame
-        // This is the INVERSE of the measurement model transformation
-        double dx_world = cos_theta * innovation(0) - sin_theta * innovation(1);
-        double dy_world = sin_theta * innovation(0) + cos_theta * innovation(1);
+        for (size_t i = 0; i < sigma_points.size(); i++) {
+            Eigen::Vector2d z_diff = Z_sigma[i] - z_mean;
+            P_zz += Wc_[i] * (z_diff * z_diff.transpose());
+            
+            Eigen::VectorXd x_diff = sigma_points[i] - x_;
+            x_diff(2) = normalizeAngle(x_diff(2));
+            P_xz += Wc_[i] * (x_diff * z_diff.transpose());
+        }
         
-        // Apply correction with high gain (trust landmarks!)
-        double gain = 0.5;  // 50% correction per landmark
-        x_(0) += gain * dx_world;
-        x_(1) += gain * dy_world;
+        // Add measurement noise
+        P_zz += R_;
         
-        // Also correct orientation slightly based on consistency
-        // (simplified - just small adjustment)
-        double theta_correction = 0.05 * (innovation(0) + innovation(1)) / 10.0;
-        x_(2) = normalizeAngle(x_(2) + theta_correction);
+        // 5. Check for numerical issues
+        if (P_zz.determinant() < 1e-10) {
+            continue;  // Skip this update if covariance is singular
+        }
+        
+        // 6. Compute Kalman gain
+        Eigen::MatrixXd K = P_xz * P_zz.inverse();
+        
+        // 7. Update state with innovation
+        Eigen::Vector2d z_obs(obs_x, obs_y);
+        Eigen::Vector2d innovation = z_obs - z_mean;
+        
+        // Limit innovation to prevent huge jumps
+        double innovation_norm = innovation.norm();
+        if (innovation_norm > 2.0) {  // Max 2m correction per landmark
+            innovation = innovation / innovation_norm * 2.0;
+        }
+        
+        x_ = x_ + K * innovation;
+        x_(2) = normalizeAngle(x_(2));
+        
+        // 8. Update covariance
+        P_ = P_ - K * P_zz * K.transpose();
+        P_ = (P_ + P_.transpose()) / 2.0;  // Symmetrize
+        
+        // Add regularization
+        P_ += Eigen::MatrixXd::Identity(nx_, nx_) * 1e-6;
     }
-    
-    // Reduce covariance slightly (we got new information)
-    P_ *= 0.95;
 }
 
 // ============================================================================
