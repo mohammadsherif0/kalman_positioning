@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'positioning_node = ros2_positioning_node:main',
+            'positioning_node = kalman_positioning.positioning_node:main',
         ],
     },
 )
