@@ -141,6 +141,18 @@ class PositioningNode(Node):
         y = msg.pose.pose.position.y
         theta = self.quaternion_to_yaw(msg.pose.pose.orientation)
         
+        # Initialize UKF state from first odometry message
+        if self.prev_odom is None:
+            self.get_logger().info(f'Initializing UKF state from first odometry: ({x:.2f}, {y:.2f}, {theta:.2f})')
+            self.ukf.x[0] = x
+            self.ukf.x[1] = y
+            self.ukf.x[2] = theta
+            self.prev_odom = (x, y, theta)
+            self.prev_time = current_time
+            # Publish initial estimate
+            self.publish_estimated_odometry(current_time)
+            return
+        
         # Calculate motion since last odometry
         if self.prev_odom is not None and self.prev_time is not None:
             # Calculate displacement
