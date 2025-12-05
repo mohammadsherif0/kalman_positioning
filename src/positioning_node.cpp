@@ -238,7 +238,7 @@ private:
     void publishEstimatedOdometry(const rclcpp::Time& timestamp) {
         nav_msgs::msg::Odometry estimated_odom;
         estimated_odom.header.stamp = timestamp;
-        estimated_odom.header.frame_id = "world";
+        estimated_odom.header.frame_id = "map";
         estimated_odom.child_frame_id = "robot_estimated";
         
         // Get state from UKF
