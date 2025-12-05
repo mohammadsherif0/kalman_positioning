@@ -32,7 +32,7 @@ public:
         RCLCPP_INFO(this->get_logger(), "Initializing Kalman Positioning Node");
         
         // Declare parameters
-        this->declare_parameter("landmarks_csv_path", "");
+        this->declare_parameter("landmarks_csv_path", "../landmarks.csv");
         this->declare_parameter("process_noise_xy", 0.01);
         this->declare_parameter("process_noise_theta", 0.01);
         this->declare_parameter("measurement_noise_xy", 0.01);
@@ -45,8 +45,13 @@ public:
         
         // Load landmarks
         landmark_manager_ = std::make_shared<LandmarkManager>();
-        if (!landmarks_csv.empty() && landmark_manager_->loadFromCSV(landmarks_csv)) {
-            RCLCPP_INFO(this->get_logger(), "Loaded landmarks from %s", landmarks_csv.c_str());
+        if (landmarks_csv.empty()) {
+            RCLCPP_WARN(this->get_logger(), "No landmarks CSV path provided!");
+        } else if (landmark_manager_->loadFromCSV(landmarks_csv)) {
+            RCLCPP_INFO(this->get_logger(), "Loaded %d landmarks from %s", 
+                        landmark_manager_->getNumLandmarks(), landmarks_csv.c_str());
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Failed to load landmarks from %s", landmarks_csv.c_str());
         }
         
         // Initialize UKF
@@ -127,17 +132,18 @@ private:
             last_x_ = x;
             last_y_ = y;
             last_theta_ = theta;
-            last_odom_time_ = msg->header.stamp;
+            last_odom_time_ = rclcpp::Time(msg->header.stamp);
             initialized_ = true;
             
             RCLCPP_INFO(this->get_logger(), "UKF initialized from first odometry: (%.2f, %.2f, %.2f)", 
                         x, y, theta);
-            publishEstimatedOdometry(msg->header.stamp);
+            publishEstimatedOdometry(rclcpp::Time(msg->header.stamp));
             return;
         }
         
         // Calculate motion since last odometry
-        double dt = (msg->header.stamp - last_odom_time_).seconds();
+        rclcpp::Time current_time = rclcpp::Time(msg->header.stamp);
+        double dt = (current_time - last_odom_time_).seconds();
         double dx = x - last_x_;
         double dy = y - last_y_;
         double dtheta = normalizeAngle(theta - last_theta_);
@@ -149,10 +155,10 @@ private:
         last_x_ = x;
         last_y_ = y;
         last_theta_ = theta;
-        last_odom_time_ = msg->header.stamp;
+        last_odom_time_ = current_time;
         
         // Publish estimated odometry
-        publishEstimatedOdometry(msg->header.stamp);
+        publishEstimatedOdometry(current_time);
     }
     
     /**
