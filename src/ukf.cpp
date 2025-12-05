@@ -101,7 +101,7 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
     
     // 2. Compute matrix square root using eigenvalue decomposition
     // P = V * D * V^T, so sqrt(P) = V * sqrt(D)
-    // Then scale by sqrt(2*n+1) for equal weights
+    // Use conservative scaling for stability
     
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(cov);
     Eigen::VectorXd eigenvalues = solver.eigenvalues();
@@ -112,8 +112,9 @@ std::vector<Eigen::VectorXd> UKF::generateSigmaPoints(const Eigen::VectorXd& mea
         if (eigenvalues(i) < 1e-10) eigenvalues(i) = 1e-10;
     }
     
-    // Compute sqrt(P) = V * sqrt(D), then scale for equal weights
-    double scale = std::sqrt(2.0 * n + 1.0);
+    // Compute sqrt(P) = V * sqrt(D) with moderate scaling
+    // Using sqrt(n) instead of sqrt(2n+1) for more conservative spread
+    double scale = std::sqrt(static_cast<double>(n));
     Eigen::MatrixXd sqrt_matrix = eigenvectors * eigenvalues.cwiseSqrt().asDiagonal() * scale;
     
     // 3. Generate 2*n sigma points
@@ -180,17 +181,19 @@ Eigen::VectorXd UKF::processModel(const Eigen::VectorXd& state, double dt,
 Eigen::Vector2d UKF::measurementModel(const Eigen::VectorXd& state, int landmark_id) {
     // Task A4: Measurement Model
     // ========================================================================
+    // The observations from fake_robot are ALREADY in robot frame (relative x, y)
+    // So we need to predict what the robot WOULD observe given its state
     
     if (landmarks_.find(landmark_id) == landmarks_.end()) {
         return Eigen::Vector2d::Zero();
     }
     
-    // Get landmark position
+    // Get landmark position in world frame
     auto landmark = landmarks_[landmark_id];
     double lx = landmark.first;
     double ly = landmark.second;
     
-    // Get robot state
+    // Get robot state in world frame
     double rx = state(0);
     double ry = state(1);
     double theta = state(2);
@@ -199,15 +202,16 @@ Eigen::Vector2d UKF::measurementModel(const Eigen::VectorXd& state, int landmark
     double dx_world = lx - rx;
     double dy_world = ly - ry;
     
-    // Transform to robot frame
+    // Transform to robot frame (what the robot's sensor would see)
     double cos_theta = std::cos(theta);
     double sin_theta = std::sin(theta);
     
-    Eigen::Vector2d measurement;
-    measurement(0) = cos_theta * dx_world + sin_theta * dy_world;   // rel_x
-    measurement(1) = -sin_theta * dx_world + cos_theta * dy_world;  // rel_y
+    Eigen::Vector2d predicted_observation;
+    // Rotation from world to robot frame
+    predicted_observation(0) = cos_theta * dx_world + sin_theta * dy_world;   // forward
+    predicted_observation(1) = -sin_theta * dx_world + cos_theta * dy_world;  // sideways
     
-    return measurement;
+    return predicted_observation;
 }
 
 // ============================================================================
