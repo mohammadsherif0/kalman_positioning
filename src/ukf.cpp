@@ -365,8 +365,13 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
             innovation = innovation / innovation_norm * 5.0;
         }
         
-        x_ = x_ + K * innovation;
+        Eigen::VectorXd correction = K * innovation;
+        std::cout << "    Kalman gain correction: dx=" << correction(0) << ", dy=" << correction(1) << ", dtheta=" << correction(2) << std::endl;
+        
+        x_ = x_ + correction;
         x_(2) = normalizeAngle(x_(2));
+        
+        std::cout << "    New state: x=" << x_(0) << ", y=" << x_(1) << ", theta=" << x_(2) << std::endl;
         
         // 8. Update covariance
         P_ = P_ - K * P_zz * K.transpose();
@@ -375,6 +380,8 @@ void UKF::update(const std::vector<std::tuple<int, double, double, double>>& lan
         // Add regularization
         P_ += Eigen::MatrixXd::Identity(nx_, nx_) * 1e-6;
     }
+    
+    std::cout << "=== END UPDATE ===" << std::endl;
 }
 
 // ============================================================================
